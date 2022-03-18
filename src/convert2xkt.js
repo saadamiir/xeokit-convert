@@ -124,8 +124,8 @@ function convert2xkt({
         if (!sourceData) {
             try {
                 sourceData = fs.readFileSync(source);
-            } catch (err) {
-                reject(err);
+            } catch (errMsg) {
+                reject(errMsg);
                 return;
             }
         }
@@ -139,8 +139,8 @@ function convert2xkt({
             try {
                 const metaModelFileData = fs.readFileSync(metaModelSource);
                 metaModelData = JSON.parse(metaModelFileData);
-            } catch (err) {
-                reject(err);
+            } catch (errMsg) {
+                reject(errMsg);
                 return;
             }
         }
@@ -285,7 +285,7 @@ function convert2xkt({
                 stats.compressionRatio = (sourceFileSizeBytes / targetFileSizeBytes).toFixed(2);
                 stats.conversionTime = ((new Date() - startTime) / 1000.0).toFixed(2);
                 stats.aabb = xktModel.aabb;
-                log("Converted to: XKT v9");
+                log(`Converted to: XKT v${XKT_INFO.xktVersion}`);
                 if (includeTypes) {
                     log("Include types: " + (includeTypes ? includeTypes : "(include all)"));
                 }

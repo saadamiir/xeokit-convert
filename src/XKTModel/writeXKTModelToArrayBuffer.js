@@ -84,8 +84,7 @@ function getModelData(xktModel) {
 
     for (let textureIndex = 0; textureIndex < numTextures; textureIndex++) {
         const texture = texturesList[textureIndex];
-        //   lenTextures += texture.data.size();
-        lenTextures++;
+        lenTextures += texture.imageData.byteLength;
     }
 
     for (let materialIndex = 0; materialIndex < numMaterials; materialIndex++) {
@@ -111,16 +110,19 @@ function getModelData(xktModel) {
 
         metadata: {},
 
-        textures: new Uint8Array(lenTextures), // All textures
+        textureData: new Uint8Array(lenTextures), // All textures
+        eachTextureDataPortion: new Uint32Array(numTextures), // For each texture, an index to its first element in textureData
 
         // Geometry data - vertex attributes and indices
 
         positions: new Uint16Array(lenPositions), // All geometry arrays
         normals: new Int8Array(lenNormals),
         colors: new Uint8Array(lenColors),
-        uvs: new Uint32Array(lenUVs),
+        uvs: new Float32Array(lenUVs),
         indices: new Uint32Array(lenIndices),
         edgeIndices: new Uint32Array(lenEdgeIndices),
+
+        // Textures
 
         materialTextures: new Uint32Array(lenMaterialTextures), // Texture indices, in groups for materials (this reuses textures among materials)
         materialAttributes: new Uint8Array(lenMaterialAttributes), // Material attributes, in groups for materials
@@ -156,7 +158,8 @@ function getModelData(xktModel) {
 
         eachMeshGeometriesPortion: new Uint32Array(numMeshes), // For each mesh, an index into the eachGeometry* arrays
         eachMeshMatricesPortion: new Uint32Array(numMeshes), // For each mesh that shares its geometry, an index to its first element in data.matrices, to indicate the modeling matrix that transforms the shared geometry Local-space vertex positions. This is ignored for meshes that don't share geometries, because the vertex positions of non-shared geometries are pre-transformed into World-space.
-        eachMeshMaterial: new Uint8Array(numMeshes * 6), // For each mesh, an RGBA integer color of format [0..255, 0..255, 0..255, 0..255], and PBR metallic and roughness factors, of format [0..255, 0..255]
+        eachMeshMaterial: new Int32Array(numMeshes), // For each mesh, the index of its material in data.eachMaterial*; this array contains signed integers so that we can use -1 to indicate when a mesh has no material
+        eachMeshMaterialAttributes: new Uint8Array(numMeshes * 6), // For each mesh, an RGBA integer color of format [0..255, 0..255, 0..255, 0..255], and PBR metallic and roughness factors, of format [0..255, 0..255]
 
         // Entity elements in the following arrays are grouped in runs that are shared by the same tiles
 
@@ -281,11 +284,23 @@ function getModelData(xktModel) {
         }
     }
 
+    // Textures
+    
+    for (let textureIndex = 0, numTextures = xktModel.texturesList.length, portionIdx = 0; textureIndex < numTextures; textureIndex++) {
+        const xktTexture = xktModel.texturesList[textureIndex];
+        data.textureData.set(new Uint8Array(xktTexture.imageData), portionIdx);
+        data.eachTextureDataPortion[textureIndex] = portionIdx;
+        portionIdx += xktTexture.imageData.length;
+    }
+
+    // Materials
 
     for (let materialIndex = 0; materialIndex < numMaterials; materialIndex++) {
         const material = materialsList[materialIndex];
         const attributes = material.attributes;
         const textures = material.textures;
+        data.eachMaterialAttributesPortion[materialIndex] = countMaterialAttributes;
+        data.eachMaterialTexturesPortion[materialIndex] = countMaterialTextures;
         for (let i = 0, len = attributes.length; i < len; i++) {
             const attribute = attributes[i];
             data.materialAttributes[countMaterialAttributes++] = attribute;
@@ -294,6 +309,7 @@ function getModelData(xktModel) {
             const texture = textures[i];
             data.materialTextures[countMaterialTextures++] = texture.textureIndex;
         }
+        data.eachMaterialType[materialIndex] = material.type;
     }
 
     // Meshes
@@ -305,7 +321,7 @@ function getModelData(xktModel) {
             data.eachMeshMatricesPortion [meshIndex] = matricesIndex;
             matricesIndex += 16;
         }
-        data.eachMeshMaterial[meshIndex] = mesh.material.materialIndex;
+        data.eachMeshMaterial[meshIndex] = mesh.material ? mesh.material.materialIndex : -1;
     }
 
     // Entities, geometry instances, and tiles
@@ -363,7 +379,8 @@ function deflateData(data) {
 
         metadata: pako.deflate(deflateJSON(data.metadata)),
 
-        textures: pako.deflate(data.textures.buffer),
+        textureData: pako.deflate(data.textureData.buffer),
+        eachTextureDataPortion: pako.deflate(data.eachTextureDataPortion.buffer),
 
         positions: pako.deflate(data.positions.buffer),
         normals: pako.deflate(data.normals.buffer),
@@ -376,7 +393,6 @@ function deflateData(data) {
         materialAttributes: pako.deflate(data.materialAttributes),
 
         matrices: pako.deflate(data.matrices.buffer),
-
         reusedGeometriesDecodeMatrix: pako.deflate(data.reusedGeometriesDecodeMatrix.buffer),
 
         eachMaterialType: pako.deflate(data.eachMaterialType),
@@ -394,6 +410,7 @@ function deflateData(data) {
         eachMeshGeometriesPortion: pako.deflate(data.eachMeshGeometriesPortion.buffer),
         eachMeshMatricesPortion: pako.deflate(data.eachMeshMatricesPortion.buffer),
         eachMeshMaterial: pako.deflate(data.eachMeshMaterial.buffer),
+        eachMeshMaterialAttributes: pako.deflate(data.eachMeshMaterialAttributes.buffer),
 
         eachEntityId: pako.deflate(JSON.stringify(data.eachEntityId)
             .replace(/[\u007F-\uFFFF]/g, function (chr) { // Produce only ASCII-chars, so that the data can be inflated later
@@ -419,7 +436,8 @@ function createArrayBuffer(deflatedData) {
 
         deflatedData.metadata,
 
-        deflatedData.textures,
+        deflatedData.textureData,
+        deflatedData.eachTextureDataPortion,
 
         deflatedData.positions,
         deflatedData.normals,
@@ -448,6 +466,7 @@ function createArrayBuffer(deflatedData) {
         deflatedData.eachMeshGeometriesPortion,
         deflatedData.eachMeshMatricesPortion,
         deflatedData.eachMeshMaterial,
+        deflatedData.eachMeshMaterialAttributes,
 
         deflatedData.eachEntityId,
         deflatedData.eachEntityMeshesPortion,

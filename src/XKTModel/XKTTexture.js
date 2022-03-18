@@ -28,11 +28,18 @@ class XKTTexture {
         this.textureIndex = cfg.textureIndex;
 
         /**
-         * Texture image data.
+         * Base64-encoded texture image data.
          *
          * @type {String}
          */
-        this.data = cfg.data;
+        this.imageData = cfg.imageData;
+
+        /**
+         * Texture file source.
+         *
+         * @type {String}
+         */
+        this.src = cfg.src;
     }
 }
 

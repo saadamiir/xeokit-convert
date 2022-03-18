@@ -21,7 +21,7 @@ const tempVec4b = math.vec4([0, 0, 0, 1]);
 const tempMat4 = math.mat4();
 const tempMat4b = math.mat4();
 
-const MIN_TILE_DIAG = 10000;
+const MIN_TILE_DIAG = 5000;
 
 const kdTreeDimLength = new Float64Array(3);
 
@@ -427,7 +427,8 @@ class XKTModel {
      *
      * @param {*} params Method parameters.
      * @param {Number} params.textureId Unique ID for the {@link XKTTexture}.
-     * @param {String} params.data Image data for the texture.
+     * @param {String} [params.imageData] Image data for the texture.
+     * @param {String} [params.src] Source of an image file for the texture.
      * @returns {XKTTexture} The new {@link XKTTexture}.
      */
     createTexture(params) {
@@ -440,8 +441,8 @@ class XKTModel {
             throw "Parameter expected: params.textureId";
         }
 
-        if (!params.data) {
-            throw "Parameter expected: params.data";
+        if (!params.imageData && !params.src) {
+            throw "Parameter expected: params.imageData or params.src";
         }
 
         if (this.finalized) {
@@ -455,8 +456,9 @@ class XKTModel {
         }
 
         const textureId = params.textureId;
-        const data = params.data;
-        const texture = new XKTTexture({textureId, textureIndex: this.texturesList.length, data});
+        const imageData = params.imageData;
+        const src = params.src;
+        const texture = new XKTTexture({textureId, textureIndex: this.texturesList.length, imageData, src});
 
         this.textures[textureId] = texture;
         this.texturesList.push(texture);
@@ -511,7 +513,7 @@ class XKTModel {
      *
      * @param {*} params Method parameters.
      * @param {Number} params.materialId Unique ID for the {@link XKTMaterial}.
-     * @param {Number} params.materialType Identifies the material type.
+     * @param {Number} [params.materialType=0] Identifies the material type.
      * @param {Number[]} params.textureIds IDs of zero or more existing {@link XKTTexture}s in {@link XKTModel#textures}. Semantics are determined by the material type.
      * @param {Number[]} params.attributes Flattened array of float attributes for the material. Semantics are determined by the material type.
      * @returns {XKTMaterial} The new {@link XKTMaterial}.
@@ -526,10 +528,6 @@ class XKTModel {
             throw "Parameter expected: params.materialId";
         }
 
-        if (params.materialType === undefined) {
-            throw "Parameter expected: params.materialType";
-        }
-
         if (this.finalized) {
             console.error("XKTModel has been finalized, can't add more materials");
             return;
@@ -541,11 +539,13 @@ class XKTModel {
         }
 
         const textureIds = params.textureIds;
+        const textures = [];
 
         if (textureIds) {
             for (let i = 0, len = textureIds.length; i < len; i++) {
                 const textureId = textureIds[i];
-                if (!this.textures[textureId]) {
+                const texture = this.textures[textureId];
+                if (!texture) {
                     console.error("XKTTexture not found: " + textureId);
                     return;
                 }
@@ -557,7 +557,7 @@ class XKTModel {
             materialIndex: this.materialsList.length,
             materialType: params.materialType || 0,
             attributes: params.attributes || [],
-            textureIds: textureIds
+            textures: textures
         });
 
         this.materials[params.materialId] = material;
@@ -714,6 +714,7 @@ class XKTModel {
      * @param {*} params Method parameters.
      * @param {Number} params.meshId Unique ID for the {@link XKTMesh}.
      * @param {Number} params.geometryId ID of an existing {@link XKTGeometry} in {@link XKTModel#geometries}.
+     * @param {Number} [params.materialId] Unique ID of an {@link XKTMaterial} in {@link XKTModel#materials}.
      * @param {Uint8Array} params.color RGB color for the {@link XKTMesh}, with each color component in range [0..1].
      * @param {Number} [params.metallic=0] How metallic the {@link XKTMesh} is, in range [0..1]. A value of ````0```` indicates fully dielectric material, while ````1```` indicates fully metallic.
      * @param {Number} [params.roughness=1] How rough the {@link XKTMesh} is, in range [0..1]. A value of ````0```` indicates fully smooth, while ````1```` indicates fully rough.
